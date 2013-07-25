@@ -1,5 +1,6 @@
+# Encoding: utf-8
 # Cloud Foundry Java Buildpack
-# Copyright (c) 2013 the original author or authors.
+# Copyright 2013 the original author or authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,19 +23,19 @@ module JavaBuildpack
 
   describe Buildpack do
 
-    let(:buildpack) { Buildpack.new(APP_DIR) }
-    let(:stub_container1) { double('StubContainer1', :detect => nil) }
-    let(:stub_container2) { double('StubContainer2', :detect => nil) }
-    let(:stub_framework1) { double('StubFramework1', :detect => nil) }
-    let(:stub_framework2) { double('StubFramework2', :detect => nil) }
-    let(:stub_jre1) { double('StubJre1', :detect => nil) }
-    let(:stub_jre2) { double('StubJre2', :detect => nil) }
+    let(:stub_container1) { double('StubContainer1', detect: nil) }
+    let(:stub_container2) { double('StubContainer2', detect: nil) }
+    let(:stub_framework1) { double('StubFramework1', detect: nil) }
+    let(:stub_framework2) { double('StubFramework2', detect: nil) }
+    let(:stub_jre1) { double('StubJre1', detect: nil) }
+    let(:stub_jre2) { double('StubJre2', detect: nil) }
 
     before do
       YAML.stub(:load_file).with(File.expand_path('config/components.yml')).and_return(
         'containers' => ['Test::StubContainer1', 'Test::StubContainer2'],
         'frameworks' => ['Test::StubFramework1', 'Test::StubFramework2'],
-        'jres' => ['Test::StubJre1', 'Test::StubJre2'])
+        'jres' => ['Test::StubJre1', 'Test::StubJre2']
+      )
 
       Test::StubContainer1.stub(:new).and_return(stub_container1)
       Test::StubContainer2.stub(:new).and_return(stub_container2)
@@ -50,11 +51,11 @@ module JavaBuildpack
       stub_container1.stub(:detect).and_return('stub-container-1')
       stub_container2.stub(:detect).and_return('stub-container-2')
 
-      expect { buildpack.detect }.to raise_error(/stub-container-1, stub-container-2/)
+      with_buildpack { |buildpack| expect { buildpack.detect }.to raise_error(/stub-container-1, stub-container-2/) }
     end
 
     it 'should return no detections if no container can run an application' do
-      detected = buildpack.detect
+      detected = with_buildpack { |buildpack| buildpack.detect }
       expect(detected).to be_empty
     end
 
@@ -62,7 +63,7 @@ module JavaBuildpack
       stub_jre1.stub(:detect).and_return('stub-jre-1')
       stub_jre2.stub(:detect).and_return('stub-jre-2')
 
-      expect { buildpack.detect }.to raise_error(/stub-jre-1, stub-jre-2/)
+      with_buildpack { |buildpack|  expect { buildpack.detect }.to raise_error(/stub-jre-1, stub-jre-2/) }
     end
 
     it 'should call compile on matched components' do
@@ -77,7 +78,7 @@ module JavaBuildpack
       stub_jre1.should_receive(:compile)
       stub_jre2.should_not_receive(:compile)
 
-      detected = buildpack.compile
+      with_buildpack { |buildpack| buildpack.compile }
     end
 
     it 'should call release on matched components' do
@@ -94,9 +95,9 @@ module JavaBuildpack
       stub_jre1.should_receive(:release)
       stub_jre2.should_not_receive(:release)
 
-      payload = buildpack.release
+      payload = with_buildpack { |buildpack| buildpack.release }
 
-      expect(payload).to eq({'addons' => [], 'config_vars' => {}, 'default_process_types' => { 'web' => 'test-command' }}.to_yaml)
+      expect(payload).to eq({ 'addons' => [], 'config_vars' => {}, 'default_process_types' => { 'web' => 'test-command' } }.to_yaml)
     end
 
     it 'should load configuration file matching JRE class name' do
@@ -108,8 +109,14 @@ module JavaBuildpack
       File.stub(:exists?).with(File.expand_path('config/stubcontainer1.yml')).and_return(false)
       File.stub(:exists?).with(File.expand_path('config/stubcontainer2.yml')).and_return(false)
       YAML.stub(:load_file).with(File.expand_path('config/stubjre1.yml')).and_return('x' => 'y')
-      buildpack.detect
+
+      with_buildpack { |buildpack| buildpack.detect }
     end
+
+    def with_buildpack(&block)
+      Dir.mktmpdir { |root| block.call(Buildpack.new(File.join root, APP_DIR)) }
+    end
+
   end
 
 end

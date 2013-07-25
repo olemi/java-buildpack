@@ -28,6 +28,7 @@ The buildpack supports configuration and extension through the use of Git reposi
 	* [Tomcat](docs/container-tomcat.md) ([Configuration](docs/container-tomcat.md#configuration))
 * Standard Frameworks
 	* [Play Auto Reconfiguration](docs/framework-play-auto-reconfiguration.md) ([Configuration](docs/framework-play-auto-reconfiguration.md#configuration))
+	* [Play JPA Plugin](docs/framework-play-jpa-plugin.md) ([Configuration](docs/framework-play-jpa-plugin.md#configuration))
 	* [Spring Auto Reconfiguration](docs/framework-spring-auto-reconfiguration.md) ([Configuration](docs/framework-spring-auto-reconfiguration.md#configuration))
 	* [`JAVA_OPTS`](docs/framework-java_opts.md) ([Configuration](docs/framework-java_opts.md#configuration))
 * Standard JREs
@@ -41,3 +42,22 @@ The buildpack supports configuration and extension through the use of Git reposi
 	* [Repositories](docs/util-repositories.md)
 	* [Repository Builders](docs/util-repository-builders.md)
 	* [Test Applications](docs/util-test-applications.md)
+
+## Running Tests
+To run the tests, do the following:
+
+```bash
+bundle install
+bundle exec rake
+```
+
+## Contributing
+[Pull requests][] are welcome; see the [contributor guidelines][] for details.
+
+[Pull requests]: http://help.github.com/send-pull-requests
+[contributor guidelines]: CONTRIBUTING.md
+
+## License
+The Tomcat Builder is released under version 2.0 of the [Apache License][].
+
+[Apache License]: http://www.apache.org/licenses/LICENSE-2.0
