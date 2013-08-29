@@ -8,6 +8,15 @@ If the buildpack fails with an exception, the exception message is logged with a
 log level of `ERROR` whereas the exception stack trace is logged with a log
 level of `DEBUG` to prevent users from seeing stack traces by default.
 
+## Sensitive Information in Logs
+
+The Java buildpack logs sensitive information, such as environment variables which may contain security
+credentials.
+
+_You should be careful not to expose this information
+inadvertently_, for example by posting standard error stream contents or the contents of
+`<app dir>/.buildpack-diagnostics/buildpack.log` to a public discussion list.  
+
 ## Logger Usage
 The `LoggerFactory` class in the `JavaBuildpack::Diagnostics` module
 manages a single instance of a subclass of the standard Ruby `Logger`.
@@ -23,6 +32,8 @@ both parameter and block forms:
     logger.debug { "#{costly_method}" }
 
 ## Configuration
+For general information on configuring the buildpack, refer to [Configuration and Extension][].
+
 The log level is configured by setting an environment variable
 `$JBP_LOG_LEVEL` to one of:
 
@@ -40,3 +51,5 @@ specified using any mixture of upper and lower case.
 
 Ruby's verbose and debug modes override the default log level to `DEBUG` unless
 `JBP_LOG_LEVEL` has been set, in which case this takes priority.
+
+[Configuration and Extension]: ../README.md#Configuration-and-Extension

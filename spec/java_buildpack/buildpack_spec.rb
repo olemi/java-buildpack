@@ -33,7 +33,7 @@ module JavaBuildpack
 
     before do
       YAML.stub(:load_file).with(File.expand_path('config/logging.yml')).and_return(
-          'default_log_level' => 'INFO'
+          'default_log_level' => 'DEBUG'
       )
       YAML.stub(:load_file).with(File.expand_path('config/components.yml')).and_return(
           'containers' => ['Test::StubContainer1', 'Test::StubContainer2'],
@@ -49,6 +49,8 @@ module JavaBuildpack
 
       Test::StubJre1.stub(:new).and_return(stub_jre1)
       Test::StubJre2.stub(:new).and_return(stub_jre2)
+
+      $stderr = StringIO.new
     end
 
     it 'should raise an error if more than one container can run an application' do
@@ -61,6 +63,14 @@ module JavaBuildpack
     it 'should return no detections if no container can run an application' do
       detected = with_buildpack { |buildpack| buildpack.detect }
       expect(detected).to be_empty
+    end
+
+    it 'should raise an error on compile if no container can run an application' do
+      with_buildpack { |buildpack| expect { buildpack.compile }.to raise_error(/No supported application type/) }
+    end
+
+    it 'should raise an error on release if no container can run an application' do
+      with_buildpack { |buildpack| expect { buildpack.release }.to raise_error(/No supported application type/) }
     end
 
     it 'should raise an error if more than one JRE can run an application' do
@@ -115,6 +125,26 @@ module JavaBuildpack
       YAML.stub(:load_file).with(File.expand_path('config/stubjre1.yml')).and_return('x' => 'y')
 
       with_buildpack { |buildpack| buildpack.detect }
+    end
+
+    it 'logs information about the git repository of a buildpack' do
+      with_buildpack { |buildpack| buildpack.detect }
+      standard_error = $stderr.string
+      expect(standard_error).to match(/git remotes/)
+      expect(standard_error).to match(/git HEAD commit/)
+    end
+
+    it 'realises when buildpack is not stored in a git repository' do
+      Dir.mktmpdir do |tmp_dir|
+        Buildpack.stub(:git_dir).and_return(tmp_dir)
+        with_buildpack { |buildpack| buildpack.detect }
+        expect($stderr.string).to match(/Buildpack is not stored in a git repository/)
+      end
+    end
+
+    it 'handles exceptions correctly' do
+      expect { with_buildpack { |buildpack| raise 'an exception' } }.to raise_error SystemExit
+      expect($stderr.string).to match(/an exception/)
     end
 
     def with_buildpack(&block)

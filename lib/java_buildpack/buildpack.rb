@@ -44,7 +44,7 @@ module JavaBuildpack
         yield new(app_dir)
       rescue => e
         logger.error(message % e.inspect)
-        logger.debug("Exception #{e.inspect} backtrace: #{e.backtrace}")
+        logger.debug("Exception #{e.inspect} backtrace:\n#{e.backtrace.join("\n")}")
         abort e.message
       end
     end
@@ -72,11 +72,12 @@ module JavaBuildpack
     #
     # @return [void]
     def compile
+      the_container = container # diagnose detect failure early
       FileUtils.mkdir_p @lib_directory
 
       jre.compile
       frameworks.each { |framework| framework.compile }
-      container.compile
+      the_container.compile
     end
 
     # Generates the payload required to run the application.  The payload format is defined by the
@@ -84,9 +85,10 @@ module JavaBuildpack
     #
     # @return [String] The payload required to run the application.
     def release
+      the_container = container # diagnose detect failure early
       jre.release
       frameworks.each { |framework| framework.release }
-      command = container.release
+      command = the_container.release
 
       payload = {
           'addons' => [],
@@ -112,6 +114,7 @@ module JavaBuildpack
     # Instances should only be constructed by this class.
     def initialize(app_dir)
       @logger = JavaBuildpack::Diagnostics::LoggerFactory.get_logger
+      Buildpack.log_git_data @logger
       Buildpack.dump_environment_variables @logger
       Buildpack.require_component_files
       components = Buildpack.components @logger
@@ -119,18 +122,22 @@ module JavaBuildpack
       java_home = ''
       java_opts = []
       @lib_directory = Buildpack.lib_directory app_dir
+      environment = ENV.to_hash
+      vcap_application = environment.delete 'VCAP_APPLICATION'
+      vcap_services = environment.delete 'VCAP_SERVICES'
 
       basic_context = {
           app_dir: app_dir,
+          environment: environment,
           java_home: java_home,
           java_opts: java_opts,
-          lib_directory: @lib_directory
+          lib_directory: @lib_directory,
+          vcap_application: vcap_application ? YAML.load(vcap_application) : {},
+          vcap_services: vcap_services ? YAML.load(vcap_services) : {}
       }
 
       @jres = Buildpack.construct_components(components, 'jres', basic_context, @logger)
-
       @frameworks = Buildpack.construct_components(components, 'frameworks', basic_context, @logger)
-
       @containers = Buildpack.construct_components(components, 'containers', basic_context, @logger)
     end
 
@@ -184,8 +191,25 @@ module JavaBuildpack
       Pathname.new(File.expand_path('framework', File.dirname(__FILE__)))
     end
 
+    def self.git_dir
+      File.expand_path('../../.git', File.dirname(__FILE__))
+    end
+
     def self.jre_directory
       Pathname.new(File.expand_path('jre', File.dirname(__FILE__)))
+    end
+
+    def self.log_git_data(logger)
+      # Log information about the buildpack's git repository to enable stale forks to be spotted.
+      # Call the debug method passing a parameter rather than a block so that, should the git command
+      # become inaccessible to the buildpack at some point in the future, we find out before someone
+      # happens to switch on debug logging.
+      if system("git --git-dir=#{git_dir} status 2>/dev/null 1>/dev/null")
+       logger.debug("git remotes: #{`git --git-dir=#{git_dir} remote -v`}")
+       logger.debug("git HEAD commit: #{`git --git-dir=#{git_dir} log HEAD^!`}")
+      else
+        logger.debug('Buildpack is not stored in a git repository')
+      end
     end
 
     def self.lib_directory(app_dir)
@@ -207,7 +231,9 @@ module JavaBuildpack
     end
 
     def container
-      @containers.find { |container| container.detect }
+      found_container = @containers.find { |container| container.detect }
+      raise 'No supported application type was detected' unless found_container
+      found_container
     end
 
     def frameworks
