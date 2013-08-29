@@ -1,0 +1,21 @@
+Changes by panoratio:
+
+Tomcat configurations:
+-----------------------
+resources/conf/tomcat/server.xml
+
+  bindOnInit="true"
+  URIEncoding="UTF-8"
+
+Memory settings:
+-----------------
+config/openjdk.yml
+
+   permgen: 256m
+
+
+Other JVM settings:
+--------------
+config/javaopts.yml
+
+   java_opts: "-XX:+AlwaysPreTouch"

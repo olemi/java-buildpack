@@ -14,5 +14,8 @@
 # limitations under the License.
 
 # Configuration for the +JAVA_OPTS+ framework
+
+# changes (om):
+#  java_opts: "-XX:+AlwaysPreTouch"
 ---
 java_opts: "-XX:+AlwaysPreTouch"
