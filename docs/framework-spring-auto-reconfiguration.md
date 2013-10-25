@@ -6,7 +6,7 @@ The Spring Auto Reconfiguration Framework causes an application to be automatica
     <td><strong>Detection Criterion</strong></td><td>Existence of a <tt>spring-core*.jar</tt> file in the application directory</td>
   </tr>
   <tr>
-    <td><strong>Tags</strong></td><td><tt>spring-auto-reconfiguration-&lt;version&gt;</tt></td>
+    <td><strong>Tags</strong></td><td><tt>spring-auto-reconfiguration=&lt;version&gt;</tt></td>
   </tr>
 </table>
 Tags are printed to standard output by the buildpack detect script
@@ -29,5 +29,5 @@ The framework can be configured by modifying the [`config/springautoreconfigurat
 [Configuration and Extension]: ../README.md#Configuration-and-Extension
 [`config/springautoreconfiguration.yml`]: ../config/springautoreconfiguration.yml
 [repositories]: util-repositories.md
-[this listing]: http://download.pivotal.io.s3.amazonaws.com/auto-reconfiguration/lucid/x86_64/index.yml
+[this listing]: http://download.pivotal.io.s3.amazonaws.com/auto-reconfiguration/index.yml
 [version syntax]: util-repositories.md#version-syntax-and-ordering

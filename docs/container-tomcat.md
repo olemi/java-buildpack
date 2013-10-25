@@ -3,10 +3,10 @@ The Tomcat Container allows a web application to be run.  These applications are
 
 <table>
   <tr>
-    <td><strong>Detection Criterion</strong></td><td>Existence of a <tt>WEB-INF/</tt> folder in the application directory</td>
+    <td><strong>Detection Criterion</strong></td><td>Existence of a <tt>WEB-INF/</tt> folder in the application directory and <a href="container-java-main.md">Java Main Class</a> not detected</td>
   </tr>
   <tr>
-    <td><strong>Tags</strong></td><td><tt>tomcat-&lang;version&rang;</tt>, <tt>tomcat-buildpack-support-&lang;version&rang;</tt></td>
+    <td><strong>Tags</strong></td><td><tt>tomcat=&lang;version&rang;</tt>, <tt>tomcat-buildpack-support=&lang;version&rang;</tt></td>
   </tr>
 </table>
 Tags are printed to standard output by the buildpack detect script
@@ -32,5 +32,5 @@ Additional supporting functionality can be found in the [`java-buildpack-support
 [repositories]: util-repositories.md
 [Spring profiles]:http://blog.springsource.com/2011/02/14/spring-3-1-m1-introducing-profile/
 [`SPRING_PROFILES_ACTIVE`]: http://static.springsource.org/spring/docs/3.1.x/javadoc-api/org/springframework/core/env/AbstractEnvironment.html#ACTIVE_PROFILES_PROPERTY_NAME
-[this listing]: http://download.pivotal.io.s3.amazonaws.com/tomcat/lucid/x86_64/index.yml
+[this listing]: http://download.pivotal.io.s3.amazonaws.com/tomcat/index.yml
 [version syntax]: util-repositories.md#version-syntax-and-ordering

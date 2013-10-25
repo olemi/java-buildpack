@@ -12,7 +12,7 @@ The Play JPA Plugin Framework causes an application to be automatically reconfig
     </td>
   </tr>
   <tr>
-    <td><strong>Tags</strong></td><td><tt>play-jpa-plugin-&lt;version&gt;</tt></td>
+    <td><strong>Tags</strong></td><td><tt>play-jpa-plugin=&lt;version&gt;</tt></td>
   </tr>
 </table>
 Tags are printed to standard output by the buildpack detect script
@@ -30,5 +30,5 @@ The framework can be configured by modifying the [`config/playjpaplugin.yml`][] 
 [Configuration and Extension]: ../README.md#Configuration-and-Extension
 [`config/playjpaplugin.yml`]: ../config/playjpaplugin.yml
 [repositories]: util-repositories.md
-[this listing]: http://download.pivotal.io.s3.amazonaws.com/play-jpa-plugin/lucid/x86_64/index.yml
+[this listing]: http://download.pivotal.io.s3.amazonaws.com/play-jpa-plugin/index.yml
 [version syntax]: util-repositories.md#version-syntax-and-ordering

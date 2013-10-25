@@ -14,9 +14,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+require 'java_buildpack/diagnostics/logger_factory'
 require 'java_buildpack/repository'
 require 'java_buildpack/util/download_cache'
 require 'java_buildpack/repository/version_resolver'
+require 'rbconfig'
 require 'yaml'
 
 module JavaBuildpack::Repository
@@ -29,8 +31,11 @@ module JavaBuildpack::Repository
     # @param [String] repository_root the root of the repository to create the index for
     def initialize(repository_root)
       @index = {}
-      JavaBuildpack::Util::DownloadCache.new.get("#{repository_root}#{INDEX_PATH}") do |file| # TODO: Use global cache #50175265
-        @index.merge! YAML.load_file(file)
+      @logger = JavaBuildpack::Diagnostics::LoggerFactory.get_logger
+      JavaBuildpack::Util::DownloadCache.new.get("#{canonical repository_root}#{INDEX_PATH}") do |file| # TODO: Use global cache #50175265
+        index_content = YAML.load_file(file)
+        @logger.debug { index_content }
+        @index.merge! index_content
       end
     end
 
@@ -47,7 +52,31 @@ module JavaBuildpack::Repository
 
     private
 
-      INDEX_PATH = '/index.yml'
+    INDEX_PATH = '/index.yml'
+
+    def architecture
+      `uname -m`.strip
+    end
+
+    def canonical(raw)
+      cooked = raw
+      .gsub(/\{platform\}/, platform)
+      .gsub(/\{architecture\}/, architecture)
+      @logger.debug { "#{raw} expanded to #{cooked}" }
+      cooked
+    end
+
+    def platform
+      if File.exists? '/etc/redhat-release'
+        File.open('/etc/redhat-release', 'r') { |f| "centos#{f.read.match(/CentOS release (\d)/)[1]}" }
+      elsif `uname -s` =~ /Darwin/
+        'mountainlion'
+      elsif !`which lsb_release 2> /dev/null`.empty?
+        `lsb_release -cs`.strip
+      else
+        fail 'Unable to determine platform'
+      end
+    end
 
   end
 

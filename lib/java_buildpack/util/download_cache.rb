@@ -14,11 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+require 'fileutils'
 require 'java_buildpack/diagnostics'
+require 'java_buildpack/diagnostics/logger_factory'
 require 'java_buildpack/util'
+require 'monitor'
 require 'net/http'
 require 'tmpdir'
 require 'uri'
+require 'yaml'
 
 module JavaBuildpack::Util
 
@@ -56,14 +60,16 @@ module JavaBuildpack::Util
     #                    deleted while it is being used, the cached item can only be accessed as part of a block.
     # @return [void]
     def get(uri)
+      internet_up = DownloadCache.internet_available? uri, @logger
+
       filenames = filenames(uri)
       File.open(filenames[:lock], File::CREAT) do |lock_file|
         lock_file.flock(File::LOCK_EX)
 
-        if should_update(filenames)
+        if internet_up && should_update(filenames)
           update(filenames, uri)
         elsif should_download(filenames)
-          download(filenames, uri)
+          download(filenames, uri, internet_up)
         end
 
         lock_file.flock(File::LOCK_SH)
@@ -92,7 +98,9 @@ module JavaBuildpack::Util
 
     private
 
-      HTTP_ERRORS = [
+    CACHE_CONFIG = '../../../config/cache.yml'.freeze
+
+    HTTP_ERRORS = [
         EOFError,
         Errno::ECONNREFUSED,
         Errno::ECONNRESET,
@@ -105,92 +113,173 @@ module JavaBuildpack::Util
         Net::ProtocolError,
         SocketError,
         Timeout::Error
-      ]
+    ].freeze
 
-      def delete_file(filename)
-        File.delete filename if File.exists? filename
+    HTTP_OK = '200'.freeze
+
+    @@monitor = Monitor.new
+    @@internet_checked = false
+    @@internet_up = true
+
+    def self.get_configuration
+      expanded_path = File.expand_path(CACHE_CONFIG, File.dirname(__FILE__))
+      YAML.load_file(expanded_path)
+    end
+
+    TIMEOUT_SECONDS = 10
+
+    def self.internet_available?(uri, logger)
+      @@monitor.synchronize do
+        return @@internet_up if @@internet_checked
       end
+      cache_configuration = get_configuration
+      if cache_configuration['remote_downloads'] == 'disabled'
+        store_internet_availability false
+      elsif cache_configuration['remote_downloads'] == 'enabled'
+        begin
+          rich_uri = URI(uri)
 
-      def download(filenames, uri)
-        rich_uri = URI(uri)
-
-        Net::HTTP.start(rich_uri.host, rich_uri.port, use_ssl: use_ssl?(rich_uri)) do |http|
-          request = Net::HTTP::Get.new(uri)
-          http.request request do |response|
-            write_response(filenames, response)
+          # Beware known problems with timeouts: https://www.ruby-forum.com/topic/143840
+          Net::HTTP.start(rich_uri.host, rich_uri.port, read_timeout: TIMEOUT_SECONDS, connect_timeout: TIMEOUT_SECONDS, open_timeout: TIMEOUT_SECONDS) do |http|
+            request = Net::HTTP::Get.new(uri)
+            http.request request do |response|
+              internet_up = response.code == HTTP_OK
+              store_internet_availability internet_up
+            end
           end
+        rescue *HTTP_ERRORS => ex
+          logger.debug { "Internet detection failed with #{ex}" }
+          store_internet_availability false
         end
-
-      rescue *HTTP_ERRORS
-        puts 'FAIL'
-        raise "Unable to download from #{uri}"
+      else
+        fail "Invalid remote_downloads property in cache configuration: #{cache_configuration}"
       end
+    end
 
-      def filenames(uri)
-        key = URI.escape(uri, '/')
-        {
+    def self.store_internet_availability(internet_up)
+      @@monitor.synchronize do
+        @@internet_up = internet_up
+        @@internet_checked = true
+      end
+      internet_up
+    end
+
+    def self.clear_internet_availability
+      @@monitor.synchronize do
+        @@internet_checked = false
+      end
+    end
+
+    def delete_file(filename)
+      File.delete filename if File.exists? filename
+    end
+
+    def download(filenames, uri, internet_up)
+      if internet_up
+        begin
+          rich_uri = URI(uri)
+
+          Net::HTTP.start(rich_uri.host, rich_uri.port, use_ssl: use_ssl?(rich_uri)) do |http|
+            request = Net::HTTP::Get.new(uri)
+            http.request request do |response|
+              write_response(filenames, response)
+            end
+          end
+
+        rescue *HTTP_ERRORS => ex
+          puts 'FAIL'
+          error_message = "Unable to download from #{uri} due to #{ex}"
+          raise error_message
+        end
+      else
+        look_aside(filenames, uri)
+      end
+    end
+
+    def filenames(uri)
+      key = URI.escape(uri, '/')
+      {
           cached: File.join(@cache_root, "#{key}.cached"),
           etag: File.join(@cache_root, "#{key}.etag"),
           last_modified: File.join(@cache_root, "#{key}.last_modified"),
           lock: File.join(@cache_root, "#{key}.lock")
-        }
-      end
+      }
+    end
 
-      def persist_header(response, header, filename)
-        unless response[header].nil?
-          File.open(filename, File::CREAT | File::WRONLY) do |file|
-            file.write(response[header])
-          end
+    # A download has failed, so check the read-only buildpack cache for the file
+    # and use the copy there if it exists.
+    def look_aside(filenames, uri)
+      @logger.debug "Unable to download from #{uri}. Looking in buildpack cache."
+      key = URI.escape(uri, '/')
+      stashed = File.join(ENV['BUILDPACK_CACHE'], 'java-buildpack', "#{key}.cached")
+      @logger.debug { "Looking in buildpack cache for file '#{stashed}'" }
+      if File.exist? stashed
+        FileUtils.cp(stashed, filenames[:cached])
+        @logger.debug "Using copy of #{uri} from buildpack cache."
+      else
+        message = "Buildpack cache does not contain #{uri}. Failing the download."
+        @logger.error message
+        @logger.debug { "Buildpack cache contents:\n#{`ls -lR #{File.join(ENV['BUILDPACK_CACHE'], 'java-buildpack')}`}" }
+        fail message
+      end
+    end
+
+    def persist_header(response, header, filename)
+      unless response[header].nil?
+        File.open(filename, File::CREAT | File::WRONLY) do |file|
+          file.write(response[header])
+          file.fsync
+        end
+      end
+    end
+
+    def set_header(request, header, filename)
+      if File.exists?(filename)
+        File.open(filename, File::RDONLY) do |file|
+          request[header] = file.read
+        end
+      end
+    end
+
+    def should_download(filenames)
+      !File.exists?(filenames[:cached])
+    end
+
+    def should_update(filenames)
+      File.exists?(filenames[:cached]) && (File.exists?(filenames[:etag]) || File.exists?(filenames[:last_modified]))
+    end
+
+    def update(filenames, uri)
+      rich_uri = URI(uri)
+
+      Net::HTTP.start(rich_uri.host, rich_uri.port, use_ssl: use_ssl?(rich_uri)) do |http|
+        request = Net::HTTP::Get.new(uri)
+        set_header request, 'If-None-Match', filenames[:etag]
+        set_header request, 'If-Modified-Since', filenames[:last_modified]
+
+        http.request request do |response|
+          write_response(filenames, response) unless response.code == '304'
         end
       end
 
-      def set_header(request, header, filename)
-        if File.exists?(filename)
-          File.open(filename, File::RDONLY) do |file|
-            request[header] = file.read
-          end
+    rescue *HTTP_ERRORS => ex
+      @logger.warn "Unable to update from #{uri} due to #{ex}. Using cached version."
+    end
+
+    def use_ssl?(uri)
+      uri.scheme == 'https'
+    end
+
+    def write_response(filenames, response)
+      persist_header response, 'Etag', filenames[:etag]
+      persist_header response, 'Last-Modified', filenames[:last_modified]
+
+      File.open(filenames[:cached], File::CREAT | File::WRONLY) do |cached_file|
+        response.read_body do |chunk|
+          cached_file.write(chunk)
         end
       end
-
-      def should_download(filenames)
-        !File.exists?(filenames[:cached])
-      end
-
-      def should_update(filenames)
-        File.exists?(filenames[:cached]) && (File.exists?(filenames[:etag]) || File.exists?(filenames[:last_modified]))
-      end
-
-      def update(filenames, uri)
-        rich_uri = URI(uri)
-
-        Net::HTTP.start(rich_uri.host, rich_uri.port, use_ssl: use_ssl?(rich_uri)) do |http|
-          request = Net::HTTP::Get.new(uri)
-          set_header request, 'If-None-Match', filenames[:etag]
-          set_header request, 'If-Modified-Since', filenames[:last_modified]
-
-          http.request request do |response|
-            write_response(filenames, response) unless response.code == '304'
-          end
-        end
-
-      rescue *HTTP_ERRORS
-        @logger.warn "Unable to update from #{uri}. Using cached version."
-      end
-
-      def use_ssl?(uri)
-        uri.scheme == 'https'
-      end
-
-      def write_response(filenames, response)
-        persist_header response, 'Etag', filenames[:etag]
-        persist_header response, 'Last-Modified', filenames[:last_modified]
-
-        File.open(filenames[:cached], File::CREAT | File::WRONLY) do |cached_file|
-          response.read_body do |chunk|
-            cached_file.write(chunk)
-          end
-        end
-      end
+    end
 
   end
 
